@@ -38,13 +38,11 @@ def run_evaluation(dataset_path: str = "eval_dataset.json"):
 
         passed = False
         if not should_find:
-            # Should return nothing
             if len(results) == 0:
                 passed = True
         else:
             if len(results) > 0:
                 top_text = results[0]["text"]
-                # Must contain expected keywords and NOT contain replaced keywords
                 has_exp = all(kw.lower() in top_text.lower() for kw in exp_kw)
                 has_no_unexp = not any(
                     kw.lower() in top_text.lower() for kw in unexp_kw

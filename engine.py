@@ -25,7 +25,7 @@ class MemoryEngine:
         self,
         db_path: str = "memory_engine.db",
         model_name: str = "all-MiniLM-L6-v2",
-        relevance_threshold: float = 0.26,  # Solid boundary: rejects food -> coffee, cat, etc.
+        relevance_threshold: float = 0.26,  
         conflict_threshold: float = 0.60,
     ):
         self.store = MemoryStore(db_path)
@@ -44,7 +44,6 @@ class MemoryEngine:
         clean = message.strip()
         lower = clean.lower()
 
-        # Subject domain categorization ensures distinct project attributes remain separate
         if "deadline" in lower:
             mem_type = "project"
             subject = "project_deadline"
@@ -97,7 +96,6 @@ class MemoryEngine:
         active_memories = self.store.get_active_memories()
         conflicting_id = None
 
-        # Conflict resolution only supersedes identical subjects
         for memory in active_memories:
             old_details = self.extract_fact_details(memory["text"])
             if old_details and old_details["subject"] == new_subject and new_subject != "general":

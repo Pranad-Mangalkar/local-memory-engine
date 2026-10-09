@@ -10,11 +10,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Initialize engine instance
 engine = MemoryEngine(db_path="memory_engine.db")
 
 
-# Pydantic Schemas
 class MessageRequest(BaseModel):
     message: str = Field(..., example="I use Arch Linux.")
 
@@ -28,7 +26,6 @@ class RecallResponse(BaseModel):
     memories: List[Dict[str, Any]]
 
 
-# Endpoints
 @app.post("/memory")
 def add_memory(req: MessageRequest):
     result = engine.process_message(req.message)

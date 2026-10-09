@@ -8,7 +8,6 @@ def main():
     dummy_vec_1 = np.ones(384, dtype=np.float32)
     dummy_vec_2 = np.zeros(384, dtype=np.float32)
 
-    # 1. Insert original memory
     id1 = store.insert_memory(
         text="User's deadline is October 15.",
         memory_type="project",
@@ -17,7 +16,6 @@ def main():
     )
     print(f"Inserted Memory 1 with ID: {id1}")
 
-    # 2. Insert updated memory and mark old as replaced
     id2 = store.insert_memory(
         text="User's deadline is November 2.",
         memory_type="project",
@@ -27,12 +25,10 @@ def main():
     store.mark_replaced(old_memory_id=id1, new_memory_id=id2)
     print(f"Inserted Memory 2 with ID: {id2} and marked {id1} as replaced.")
 
-    # 3. Active memories check (should return ONLY id2)
     active = store.get_active_memories()
     print(f"\nActive memories count: {len(active)} (Expected: 1)")
     print(f"Active memory text: '{active[0]['text']}'")
 
-    # 4. Audit trail check (both memories should still exist)
     all_records = store.get_all_memories()
     print(f"\nTotal audit records: {len(all_records)} (Expected: 2)")
     for rec in all_records:
