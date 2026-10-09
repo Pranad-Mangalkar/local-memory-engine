@@ -12,10 +12,30 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
-TRIVIAL_PATTERNS = [
-    r"^(ok|okay|thanks|thank you|cool|great|hello|hi|hey|bye|goodbye)[\.!\s]*$",
-    r"^(yes|no|yep|nope|sure|got it|understood)[\.!\s]*$",
-]
+# Conversational phrases that should never become memories
+TRIVIAL_WORDS = {
+    "ok",
+    "okay",
+    "thanks",
+    "thank",
+    "you",
+    "cool",
+    "great",
+    "hello",
+    "hi",
+    "hey",
+    "bye",
+    "goodbye",
+    "got",
+    "it",
+    "understood",
+    "sure",
+    "yep",
+    "nope",
+    "tip",
+    "for",
+    "the",
+}
 
 
 class MemoryEngine:
@@ -24,8 +44,8 @@ class MemoryEngine:
         self,
         db_path: str = "memory_engine.db",
         model_name: str = "all-MiniLM-L6-v2",
-        relevance_threshold: float = 0.55,
-        conflict_threshold: float = 0.70,
+        relevance_threshold: float = 0.32,  # Permits geographical/lifestyle semantic queries
+        conflict_threshold: float = 0.62,  # Strict enough so Next.js doesn't overwrite PostgreSQL
     ):
         self.store = MemoryStore(db_path)
         self.model = SentenceTransformer(model_name)
@@ -33,22 +53,42 @@ class MemoryEngine:
         self.conflict_threshold = conflict_threshold
 
     def is_small_talk(self, message: str) -> bool:
-        clean = message.strip().lower()
-        if len(clean) < 3:
+        clean = re.sub(r"[^\w\s]", "", message.strip().lower())
+        words = clean.split()
+        if not words:
             return True
-        for pattern in TRIVIAL_PATTERNS:
-            if re.match(pattern, clean):
-                return True
+        # If every single word belongs to trivial small-talk words
+        if all(w in TRIVIAL_WORDS for w in words):
+            return True
         return False
 
     def extract_fact_details(self, message: str) -> Optional[Dict[str, str]]:
         clean = message.strip()
         lower = clean.lower()
 
-        if any(w in lower for w in ["deadline", "project", "building", "app"]):
+        if any(
+            w in lower
+            for w in [
+                "deadline",
+                "building",
+                "app",
+                "project",
+                "next.js",
+                "work",
+            ]
+        ):
             mem_type = "project"
         elif any(
-            w in lower for w in ["prefer", "favourite", "favorite", "like", "use"]
+            w in lower
+            for w in [
+                "prefer",
+                "favourite",
+                "favorite",
+                "like",
+                "use",
+                "vscode",
+                "visual studio",
+            ]
         ):
             mem_type = "preference"
         elif any(w in lower for w in ["goal", "target", "want to", "aim"]):
@@ -84,11 +124,13 @@ class MemoryEngine:
         active_memories = self.store.get_active_memories()
         conflicting_id = None
 
+        # Updates only replace memories of the matching type and high topic similarity
         for memory in active_memories:
-            sim = cosine_similarity(new_vec, memory["embedding"])
-            if sim >= self.conflict_threshold:
-                conflicting_id = memory["id"]
-                break
+            if memory["type"] == new_type:
+                sim = cosine_similarity(new_vec, memory["embedding"])
+                if sim >= self.conflict_threshold:
+                    conflicting_id = memory["id"]
+                    break
 
         new_id = self.store.insert_memory(
             text=new_text,
