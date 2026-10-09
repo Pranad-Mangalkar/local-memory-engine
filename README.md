@@ -106,3 +106,5 @@ Retrieval enforces a calibrated similarity threshold ($\ge 0.30$). If a query's 
    * Transition from brute-force cosine comparison to an Approximate Nearest Neighbor (ANN) index such as **HNSW** or **IVFFlat** via FAISS, USearch, or SQLite vector extensions like `sqlite-vec`.
    * Apply metadata partitioning: filter vectors first using SQL indexes on `user_id` or `subject_domain`, running vector search only over the relevant subset ($N < 10,000$).
    * Store quantized embeddings (INT8 or scalar quantization) to reduce memory bandwidth by 75%.
+## LLM Usage
+Used ChatGPT/Gemini to help brainstorm test cases and set up initial FastAPI boilerplate. All core logic, SQLite schemas, embedding calculations, and debugging were reviewed and run locally.
