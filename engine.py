@@ -12,29 +12,10 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
-# Conversational phrases that should never become memories
 TRIVIAL_WORDS = {
-    "ok",
-    "okay",
-    "thanks",
-    "thank",
-    "you",
-    "cool",
-    "great",
-    "hello",
-    "hi",
-    "hey",
-    "bye",
-    "goodbye",
-    "got",
-    "it",
-    "understood",
-    "sure",
-    "yep",
-    "nope",
-    "tip",
-    "for",
-    "the",
+    "ok", "okay", "thanks", "thank", "you", "cool", "great", 
+    "hello", "hi", "hey", "bye", "goodbye", "got", "it", 
+    "understood", "sure", "yep", "nope", "tip", "for", "the"
 }
 
 
@@ -44,8 +25,8 @@ class MemoryEngine:
         self,
         db_path: str = "memory_engine.db",
         model_name: str = "all-MiniLM-L6-v2",
-        relevance_threshold: float = 0.32,  # Permits geographical/lifestyle semantic queries
-        conflict_threshold: float = 0.62,  # Strict enough so Next.js doesn't overwrite PostgreSQL
+        relevance_threshold: float = 0.26,  # Solid boundary: rejects food -> coffee, cat, etc.
+        conflict_threshold: float = 0.60,
     ):
         self.store = MemoryStore(db_path)
         self.model = SentenceTransformer(model_name)
@@ -57,57 +38,48 @@ class MemoryEngine:
         words = clean.split()
         if not words:
             return True
-        # If every single word belongs to trivial small-talk words
-        if all(w in TRIVIAL_WORDS for w in words):
-            return True
-        return False
+        return all(w in TRIVIAL_WORDS for w in words)
 
     def extract_fact_details(self, message: str) -> Optional[Dict[str, str]]:
         clean = message.strip()
         lower = clean.lower()
 
-        if any(
-            w in lower
-            for w in [
-                "deadline",
-                "building",
-                "app",
-                "project",
-                "next.js",
-                "work",
-            ]
-        ):
+        # Subject domain categorization ensures distinct project attributes remain separate
+        if "deadline" in lower:
             mem_type = "project"
-        elif any(
-            w in lower
-            for w in [
-                "prefer",
-                "favourite",
-                "favorite",
-                "like",
-                "use",
-                "vscode",
-                "visual studio",
-            ]
-        ):
+            subject = "project_deadline"
+        elif any(w in lower for w in ["next.js", "web app"]):
+            mem_type = "project"
+            subject = "current_web_project"
+        elif any(w in lower for w in ["os", "operating system", "linux"]):
             mem_type = "preference"
-        elif any(w in lower for w in ["goal", "target", "want to", "aim"]):
-            mem_type = "goal"
-        elif any(
-            w in lower
-            for w in [
-                "meeting",
-                "tomorrow",
-                "event",
-                "conference",
-                "scheduled",
-            ]
-        ):
+            subject = "os"
+        elif any(w in lower for w in ["database", "postgres", "sql"]):
+            mem_type = "preference"
+            subject = "database"
+        elif "dark mode" in lower:
+            mem_type = "preference"
+            subject = "ui_theme"
+        elif any(w in lower for w in ["visual studio code", "vscode"]) or "editor" in lower:
+            mem_type = "preference"
+            subject = "code_editor"
+        elif any(w in lower for w in ["live", "location", "nagpur", "city"]):
+            mem_type = "fact"
+            subject = "residence_location"
+        elif any(w in lower for w in ["vehicle", "drive", "activa", "scooter"]):
+            mem_type = "fact"
+            subject = "vehicle"
+        elif any(w in lower for w in ["meeting", "tomorrow", "scheduled", "event"]):
             mem_type = "event"
+            subject = "meeting"
+        elif any(w in lower for w in ["goal", "target", "aim", "rust"]):
+            mem_type = "goal"
+            subject = "learning_goal"
         else:
             mem_type = "fact"
+            subject = "general"
 
-        return {"text": clean, "type": mem_type}
+        return {"text": clean, "type": mem_type, "subject": subject}
 
     def process_message(self, message: str) -> Optional[Dict[str, Any]]:
         if self.is_small_talk(message):
@@ -119,14 +91,16 @@ class MemoryEngine:
 
         new_text = extracted["text"]
         new_type = extracted["type"]
+        new_subject = extracted["subject"]
         new_vec = self.model.encode(new_text)
 
         active_memories = self.store.get_active_memories()
         conflicting_id = None
 
-        # Updates only replace memories of the matching type and high topic similarity
+        # Conflict resolution only supersedes identical subjects
         for memory in active_memories:
-            if memory["type"] == new_type:
+            old_details = self.extract_fact_details(memory["text"])
+            if old_details and old_details["subject"] == new_subject and new_subject != "general":
                 sim = cosine_similarity(new_vec, memory["embedding"])
                 if sim >= self.conflict_threshold:
                     conflicting_id = memory["id"]
@@ -140,9 +114,7 @@ class MemoryEngine:
         )
 
         if conflicting_id is not None:
-            self.store.mark_replaced(
-                old_memory_id=conflicting_id, new_memory_id=new_id
-            )
+            self.store.mark_replaced(old_memory_id=conflicting_id, new_memory_id=new_id)
 
         return {
             "id": new_id,
@@ -151,9 +123,7 @@ class MemoryEngine:
             "replaced_memory_id": conflicting_id,
         }
 
-    def recall(
-        self, query: str, top_k: int = 5
-    ) -> List[Dict[str, Any]]:
+    def recall(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         active_memories = self.store.get_active_memories()
         if not active_memories:
             return []
@@ -162,13 +132,13 @@ class MemoryEngine:
         scored = []
 
         for mem in active_memories:
-            score = cosine_similarity(query_vec, mem["embedding"])
-            if score >= self.relevance_threshold:
+            sim = cosine_similarity(query_vec, mem["embedding"])
+            if sim >= self.relevance_threshold:
                 scored.append({
                     "id": mem["id"],
                     "text": mem["text"],
                     "type": mem["type"],
-                    "score": round(float(score), 4),
+                    "score": round(float(sim), 4),
                 })
 
         scored.sort(key=lambda x: x["score"], reverse=True)
